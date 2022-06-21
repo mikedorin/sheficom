@@ -1,21 +1,34 @@
 #!/usr/bin/python2
+#
+# This file is part of the sheficom distribution (https://github.com/mikedorin/sheficom).
+# Copyright (c) 2022 Michael Dorin.
+# 
+# This program is free software: you can redistribute it and/or modify 
+# it under the terms of the GNU General Public License as published by 
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful, but 
+# WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License 
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 import os
 import re
 from collections import defaultdict
 import sys
 
-# Each c file and header file is a node
 #
-# for each .c (or .cpp) file with code, the dependencies are:
-# 1. the nodes they are directly connected to
-# 2. the nodes directly connected to the .h with the same name
-# 3. the nodes connected to the .c only through zero code nodes
-# 4. the nodes connected to the .h only through zero code nodes.
-# Done.
-
-
-
-def removeComments(text):
+# The code for removing comments is all from other people.
+# I have done my best to make sure links to their work are included.
+#
+# Thank you Kev NoNo, arita37
+# https://gist.github.com/arita37/762ba3c5263a7bdcec92bc1c5fe1
+# Remove C Style Comments
+#
+def removeCommentsxx(text):
     """ remove c-style comments.
         text: blob of text with comments (can include newlines)
         returns: text with comments removed
@@ -76,22 +89,39 @@ def commentRemover(text):
     )
     return re.sub(pattern, replacer, text)
 
+#
 # https://stackoverflow.com/questions/241327/python-snippet-to-remove-c-and-c-comments
+#
 def removeCommentsFromLine(text):
     return re.sub('//.*?(\r\n?|\n)|/\*.*?\*/', '', text, flags=re.S)
 
-def removeCommentsFromFile(filename):
+
+
 #https://gist.github.com/ChunMinChang/88bfa5842396c1fbbc5b
 #Chun-Min Chang
 #github
 #With help from kossboss, on stackoverflow
 #https://stackoverflow.com/questions/1140958/whats-a-quick-one-liner-to-remove-empty-lines-from-a-python-string
+def removeCommentsFromFile(filename):
 
     filtered = []
-    with open(filename) as theFile:
-        uncommentedFile = commentRemover(theFile.read())
+    try:
+      theFile = open(filename, "r")
+    except:
+      return "" 
+    #with open(filename) as theFile:
+    uncommentedFile = commentRemover(theFile.read())
     filtered = "".join([s for s in uncommentedFile.strip().splitlines(True) if s.strip()])
     return filtered
+
+
+def countFileLines(filename):
+      try:
+        fileText = removeCommentsFromFile(filename)
+        thelines = fileText.splitlines()
+      except:
+        return -1
+      return(len(thelines))
 
 def findSameName(name, includelist):
 
@@ -113,11 +143,14 @@ def findCheaters(path, cheater_file_list):
                 fullpath = os.path.join(root, file)
                 fileText = removeCommentsFromFile(fullpath)
                 includeCount = 0
-                cheating = True
-
                 lines = fileText.splitlines()
+                if len(lines) > 0:
+                   cheating = True
                 for line in lines:
+                    line = line.strip()
                     line = line.replace(" ","")
+                    if len(line) == 0:
+                        continue
                     if "#include" in line:
                         includeCount = includeCount + 1
                     elif "#if" in line:
@@ -125,10 +158,11 @@ def findCheaters(path, cheater_file_list):
                     else:
                         cheating = False
 
+                
                 if cheating:
-                    fullpath = fullpath.replace(path,'')
-                    # print ("Cheater:  "+ fullpath+"  "+file)
-                    cheater_file_list.append(fullpath)
+                    fullpath = fullpath.replace(path,'',1)
+                    #print ("Cheater:  "+ fullpath+"  "+file)
+                    cheater_file_list.append(file)
 
 
 
@@ -143,12 +177,12 @@ def findfiles(path, extension):
             tempname = fname.lower()
             if tempname.endswith(extension):
                 name = os.path.join(root, fname)
-                name = name.replace(path, '')
+                name = name.replace(path, '',1)
                 if name not in res:
                     res.append(name)
                 else:
-                    #print ("Duplicated name "+ name)
                     continue
+                    #print ("Duplicated name "+ name)
     return res
 
 
@@ -159,9 +193,11 @@ def findinclude(rootdir, database):
             if file.endswith('.c') or file.endswith('.h') or file.endswith('.cpp') or file.endswith('.cc'):
                 fullpath = os.path.join(folder, file)
                 localfolder = folder.replace(rootdir,'')
-
-                with open(fullpath, 'r') as f:
-                    for line in f:
+                try:
+                    f = open(fullpath,'r')
+                except:
+                    continue
+                for line in f:
                         head = None
                         line = line.replace(" ","")
                         if "#include" in line:
@@ -171,7 +207,7 @@ def findinclude(rootdir, database):
                             newline = newline.translate(None, '<>#\"')
                             newline = newline.translate(None, ' ')
                             newline = newline.replace("include", '')
-                            fullpath = fullpath.replace(rootdir, '')
+                            fullpath = fullpath.replace(rootdir, '',1)
 
                             if  ".h" in newline:
                                 head, sep, tail = newline.partition(".h")
@@ -183,7 +219,7 @@ def findinclude(rootdir, database):
                                 head, sep, tail = newline.partition(".cc")
 
                             if head == None:
-                                # print "off with their head"
+                                # print "head is none"
                                 name = newline
                             else:
                                 name = head + sep
@@ -219,7 +255,6 @@ def cheatingCounter(filename, path1, path2):
 
     lines = fileText.splitlines()
     for line in lines:
-        line = line.replace(" ","")
         if "#include" in line:
             includeCount=includeCount+1
         else:
@@ -233,15 +268,14 @@ def cheatingCounter(filename, path1, path2):
 def Intersection(lst1, lst2):
     return set(lst1).intersection(lst2)
 
-def shefield(c_file_list, cheaters_list):
-    print ("filename, local, samename, cheaters, total")
+def shefield(c_file_list, cheaters_list, mainpath):
+    print ("filename,local,samename,cheaters,total,loc")
     for filename in c_file_list:
         sameNameIncludes = 0;
         cheaterIncludes = 0;
         localIncludes = 0;
         shortname = os.path.basename(filename)
         thename = findSameName(shortname, data[filename])
-
         included_cheaters = Intersection(data[filename], cheaters_list)
         if len(included_cheaters) > 0:
             for cheater in included_cheaters:
@@ -251,16 +285,27 @@ def shefield(c_file_list, cheaters_list):
         localIncludes = len(data[filename])
         if thename != None:
             # if thename in data[filename]:
-            if thename=="plugin.h":
-                print (data[thename])
+            #if thename=="plugin.h":
+            #    print (data[thename])
             sameNameIncludes = len(data[thename])
+            # print("SAME NAME", filename, sameNameIncludes)
 
         totalIncludes = localIncludes+sameNameIncludes+cheaterIncludes
+        try:
+           encoded_filename = filename.encode("ascii","ignore");
+           decoded_filename = encoded_filename.decode()
+        except:
+           decoded_filename = "invalid_characters"
 
-        print (filename + ","+ str(localIncludes)\
+        fileLength =  countFileLines(mainpath+filename)
+
+
+        print (decoded_filename+ ","+ str(localIncludes)\
               +","+str(sameNameIncludes)\
               +","+str(cheaterIncludes)\
-              +","+str(totalIncludes))
+              +","+str(totalIncludes) \
+              +","+str(fileLength)  \
+        )
 
 
 
@@ -309,9 +354,11 @@ for path in includePath:
 for path in includePath:
     h_file_list = h_file_list + findfiles(path,'.hxx')
 
+#print(h_file_list)
 # Step 4, make a list of cheaters
 for path in includePath:
+    # print(path)
     findCheaters(path, cheater_list)
 
-shefield(c_file_list, cheater_list)
+shefield(c_file_list, cheater_list, includePath[0])
 
